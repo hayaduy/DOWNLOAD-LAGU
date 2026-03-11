@@ -8,8 +8,9 @@ st.set_page_config(page_title="Music Finder Pro", page_icon="🎵", layout="wide
 # --- CUSTOM CSS ---
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border_radius: 10px; height: 3em; font-weight: bold; }
-    .stDownloadButton>button { background-color: #00b4d8; color: white; width: 100%; }
+    .stButton>button { width: 100%; border-radius: 12px; height: 3.5em; background-color: #e67e22; color: white; font-weight: bold; border: none; }
+    .stButton>button:hover { background-color: #d35400; border: none; }
+    div[data-testid="stExpander"] { border-radius: 10px; border: 1px solid #2b2b2b; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,35 +51,52 @@ if st.button("🚀 START SCANNING"):
         dur_map = {"5 Menit": 300, "10 Menit": 600, "20 Menit": 1200, "1 Jam": 3600}
         max_sec = dur_map.get(dur_sel, 999999)
 
-        opts = {'extract_flat': True, 'quiet': True, 'dateafter': date_limit, 'ignoreerrors': True}
+        # Gunakan extract_flat agar cepat
+        opts = {
+            'extract_flat': True, 
+            'quiet': True, 
+            'dateafter': date_limit if date_limit else None, 
+            'ignoreerrors': True,
+            'no_warnings': True
+        }
         
         with st.spinner("Searching YouTube..."):
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                results = ydl.extract_info(f"ytsearch{scan_limit}:{query}", download=False)
-                
-                found_data = []
-                if 'entries' in results:
-                    for v in results['entries']:
-                        if not v: continue
-                        views = v.get('view_count', 0) or 0
-                        dur = v.get('duration', 0) or 0
-                        if views >= min_views and dur <= max_sec:
-                            found_data.append({
-                                "Tanggal": v.get('upload_date'),
-                                "Views": views,
-                                "Judul": v.get('title'),
-                                "Link": f"https://www.youtube.com/watch?v={v.get('id')}"
-                            })
-
-                if found_data:
-                    found_data.sort(key=lambda x: x['Tanggal'], reverse=True)
-                    st.success(f"Ditemukan {len(found_data)} video!")
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    results = ydl.extract_info(f"ytsearch{scan_limit}:{query}", download=False)
                     
-                    for item in found_data:
-                        tgl = item['Tanggal']
-                        with st.expander(f"📅 {tgl[6:8]}-{tgl[4:6]}-{tgl[0:4]} | 🔥 {item['Views']:,} views | {item['Judul']}"):
-                            st.write(f"Link: {item['Link']}")
-                            # Untuk download di server cloud (Streamlit Share) butuh logic ffmpeg khusus
-                            st.info("Fitur download MP3 langsung dari browser memerlukan konfigurasi FFmpeg di server.")
-                else:
-                    st.warning("Tidak ada video yang cocok dengan filter.")
+                    found_data = []
+                    if results and 'entries' in results:
+                        for v in results['entries']:
+                            if not v: continue
+                            
+                            # PROTEKSI DATA KOSONG
+                            v_views = v.get('view_count') or 0
+                            v_dur = v.get('duration') or 0
+                            v_date = v.get('upload_date') or "00000000" # Kasih default string
+                            
+                            if v_views >= min_views and v_dur <= max_sec:
+                                found_data.append({
+                                    "Tanggal": v_date,
+                                    "Views": v_views,
+                                    "Judul": v.get('title') or "No Title",
+                                    "Link": f"https://www.youtube.com/watch?v={v.get('id')}"
+                                })
+
+                    if found_data:
+                        # SORTING SEKARANG AMAN
+                        found_data.sort(key=lambda x: x['Tanggal'], reverse=True)
+                        
+                        st.success(f"Ditemukan {len(found_data)} video!")
+                        
+                        for item in found_data:
+                            t = item['Tanggal']
+                            fmt_date = f"{t[6:8]}-{t[4:6]}-{t[0:4]}" if len(t) == 8 else "Unknown Date"
+                            
+                            with st.expander(f"📅 {fmt_date} | 🔥 {item['Views']:,} views | {item['Judul']}"):
+                                st.write(f"**Link Video:** {item['Link']}")
+                                st.video(item['Link']) # Streamlit bisa langsung nampilin video
+                    else:
+                        st.warning("Tidak ada video yang cocok dengan filter atau views terlalu kecil.")
+            except Exception as e:
+                st.error(f"Terjadi kesalahan teknis: {str(e)}")
